@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "ecommerce_microservice_products")
+@Table(name = "em_products")
 @Getter
 @Setter
 @NoArgsConstructor
