@@ -30,8 +30,10 @@ public class Auth {
     private String password;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, name = "role")
     private UserRole userRole;
+
+    private boolean isActive;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
