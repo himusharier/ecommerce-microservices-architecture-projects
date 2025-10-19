@@ -1,6 +1,7 @@
 package com.himusharier.auth.controller;
 
 import com.himusharier.auth.config.JwtTokenProvider;
+import com.himusharier.auth.constants.UserRole;
 import com.himusharier.auth.dto.request.LoginRequest;
 import com.himusharier.auth.dto.request.RegisterRequest;
 import com.himusharier.auth.dto.response.AuthResponse;
@@ -9,6 +10,8 @@ import com.himusharier.auth.exception.RegisterRequestException;
 import com.himusharier.auth.model.Auth;
 import com.himusharier.auth.model.AuthUserDetails;
 import com.himusharier.auth.service.JwtAuthService;
+import com.himusharier.auth.util.ApiResponse;
+import com.himusharier.auth.util.JwtExtractor;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -28,7 +31,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/api/v1")
 //@CrossOrigin(origins = "*")
 public class AuthController {
 
@@ -55,24 +58,25 @@ public class AuthController {
 
             Auth savedAuth = userService.createAuth(auth);
 
-            Map<String, Object> authResponse = new HashMap<>();
-            authResponse.put("status", "success");
-            authResponse.put("code", HttpStatus.OK.value());
-            authResponse.put("message", "Registration successful. Please login...");
+            ApiResponse<String> response = new ApiResponse<>(
+                    true, //true
+                    "Registration successful. Please login..."
+            );
 
-            return ResponseEntity.status(HttpStatus.CREATED).body(authResponse);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
         } catch (MethodArgumentTypeMismatchException e) {
             throw new RegisterRequestException(e.getMessage());
 
-        } catch (RuntimeException e) {
-            throw new RegisterRequestException(e.getMessage());
         }
+        /*catch (Exception e) {
+            throw new RegisterRequestException(e.getMessage());
+        }*/
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> authenticateUser(HttpServletRequest request,
-                                              HttpServletResponse response,
+    public ResponseEntity<?> authenticateUser(HttpServletRequest servletRequest,
+                                              HttpServletResponse servletResponse,
                                               @Valid @RequestBody LoginRequest loginRequest) {
         try {
             Authentication authentication = authenticationManager.authenticate(
@@ -87,23 +91,32 @@ public class AuthController {
             Auth auth = userDetails.auth();
 
             // Create response with token and user info
-            Map<String, Object> responseData = new HashMap<>();
+            /*Map<String, Object> responseData = new HashMap<>();
             responseData.put("status", "success");
             responseData.put("code", HttpStatus.OK.value());
             responseData.put("message", "Login successful");
 
             responseData.put("access_token", jwt);
-            responseData.put("tokenType", "Bearer");
+            responseData.put("tokenType", "Bearer");*/
 
             // Add user information
             Map<String, Object> userData = new HashMap<>();
             userData.put("id", auth.getUserId());
             userData.put("email", auth.getEmail());
             userData.put("role", auth.getUserRole());
+            userData.put("access_token", jwt);
+            userData.put("tokenType", "Bearer");
 
-            responseData.put("user", userData);
+//            responseData.put("user", userData);
 
-            return ResponseEntity.ok(responseData);
+            ApiResponse<Object> response = new ApiResponse<>(
+                    true, //true
+                    "Authentication successful. Please wait...",
+                    userData
+            );
+
+//            return ResponseEntity.ok(responseData);
+            return ResponseEntity.status(HttpStatus.OK).body(response);
 
         } catch (AuthenticationException e) {
             throw new LoginRequestException(e.getMessage());
@@ -113,7 +126,8 @@ public class AuthController {
     // This endpoint can be called from Angular to check if a token is valid
     @GetMapping("/validate-token")
     public ResponseEntity<?> validateToken(HttpServletRequest request) {
-        String jwt = getJwtFromRequest(request);
+        JwtExtractor jwtExtractor = new JwtExtractor();
+        String jwt = jwtExtractor.getJwtFromRequest(request);
 
         if (jwt != null && jwtTokenProvider.validateToken(jwt)) {
             String username = jwtTokenProvider.getUsernameFromToken(jwt);
@@ -137,14 +151,5 @@ public class AuthController {
         authResponse.put("message", "Invalid or expired token.");
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authResponse);
-    }
-
-    // Helper method to extract JWT from request
-    private String getJwtFromRequest(HttpServletRequest request) {
-        String bearerToken = request.getHeader("Authorization");
-        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7);
-        }
-        return null;
     }
 }

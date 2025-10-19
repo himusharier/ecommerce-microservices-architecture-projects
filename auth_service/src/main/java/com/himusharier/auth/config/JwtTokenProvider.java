@@ -10,17 +10,23 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.util.Base64;
 import java.util.Date;
 
 @Slf4j
 @Component
 public class JwtTokenProvider {
 
-    private final SecretKey secretKey = Keys.secretKeyFor(SignatureAlgorithm.HS512);
+    @Value("${app.jwt.secret}")
+    private String jwtSecret;
 
     @Value("${app.jwt.expiration}")
     private int jwtExpirationMs;
 
+    private SecretKey getSecretKey() {
+        byte[] keyBytes = Base64.getDecoder().decode(jwtSecret);
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
 
     public String createToken(Authentication authentication) {
         AuthUserDetails userPrincipal = (AuthUserDetails) authentication.getPrincipal();
@@ -35,13 +41,13 @@ public class JwtTokenProvider {
                 .claim("role", userPrincipal.getRole().name())
                 .issuedAt(now)
                 .expiration(expiryDate)
-                .signWith(secretKey)
+                .signWith(getSecretKey())
                 .compact();
     }
 
     public String getUsernameFromToken(String token) {
         Claims claims = Jwts.parser()
-                .verifyWith(secretKey)
+                .verifyWith(getSecretKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
@@ -52,7 +58,7 @@ public class JwtTokenProvider {
     public boolean validateToken(String token) {
         try {
             Jwts.parser()
-                    .verifyWith(secretKey)
+                    .verifyWith(getSecretKey())
                     .build()
                     .parseSignedClaims(token);
             return true;
@@ -72,9 +78,10 @@ public class JwtTokenProvider {
 
     public Claims getClaimsFromToken(String token) {
         return Jwts.parser()
-                .verifyWith(secretKey)
+                .verifyWith(getSecretKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
     }
 }
+

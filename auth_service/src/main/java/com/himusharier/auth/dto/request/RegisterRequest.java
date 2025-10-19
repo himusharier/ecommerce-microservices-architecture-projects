@@ -1,5 +1,6 @@
 package com.himusharier.auth.dto.request;
 
+import com.himusharier.auth.annotation.ValidRole;
 import com.himusharier.auth.constants.UserRole;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -14,7 +15,7 @@ public record RegisterRequest(
         @Size(min = 6, message = "Password must be at least 6 characters.")
         String password,
 
-        @NotBlank(message = "Role must be valid.")
+        @ValidRole(message = "Role must be valid.")
         UserRole userRole
 ) {
 }
