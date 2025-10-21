@@ -1,6 +1,7 @@
 package com.himusharier.auth.config;
 
 import com.himusharier.auth.model.AuthUserDetails;
+import com.himusharier.auth.model.Auth;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SecurityException;
@@ -39,6 +40,20 @@ public class JwtTokenProvider {
                 .claim("id", userPrincipal.getId())
                 .claim("email", userPrincipal.getEmail())
                 .claim("role", userPrincipal.getRole().name())
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(getSecretKey())
+                .compact();
+    }
+
+        public String createTokenFromAuth(Auth auth) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
+        return Jwts.builder()
+                .subject(auth.getEmail())
+                .claim("id", auth.getUserId())
+                .claim("email", auth.getEmail())
+                .claim("role", auth.getUserRole().name())
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(getSecretKey())
@@ -84,4 +99,5 @@ public class JwtTokenProvider {
                 .getPayload();
     }
 }
+
 

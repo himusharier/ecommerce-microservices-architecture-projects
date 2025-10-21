@@ -3,6 +3,7 @@ package com.himusharier.auth.config;
 import com.himusharier.auth.exception.JwtUserAuthenticationException;
 import com.himusharier.auth.model.JwtAuthDetails;
 import com.himusharier.auth.service.JwtAuthDetailsService;
+import com.himusharier.auth.service.TokenBlacklistService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -33,6 +34,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private JwtAuthDetailsService userDetailsService;
 
+    @Autowired
+    private TokenBlacklistService tokenBlacklistService;
+
     @Override
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
@@ -43,6 +47,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = getJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
+                // Check if token is blacklisted
+                if (tokenBlacklistService.isTokenBlacklisted(jwt)) {
+                    throw new JwtUserAuthenticationException("Token has been invalidated. Please login again.");
+                }
+
                 Claims claims = tokenProvider.getClaimsFromToken(jwt);
                 UUID userId = UUID.fromString(claims.get("id", String.class));
                 String email = claims.get("email", String.class);
@@ -77,4 +86,5 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         return null;
     }
 }
+
 

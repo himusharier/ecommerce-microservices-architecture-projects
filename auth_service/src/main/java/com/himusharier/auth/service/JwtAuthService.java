@@ -11,6 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class JwtAuthService {
@@ -43,8 +44,13 @@ public class JwtAuthService {
         return saveAuth;
     }
 
+        public Optional<Auth> getAuthByUserId(UUID userId) {
+        return authRepository.findById(userId);
+    }
+
     public UserDetails loadUserByUsername(String username) {
         Optional<Auth> byEmail = authRepository.findByEmail(username);
         return byEmail.map(AuthUserDetails::new).orElse(null);
     }
 }
+

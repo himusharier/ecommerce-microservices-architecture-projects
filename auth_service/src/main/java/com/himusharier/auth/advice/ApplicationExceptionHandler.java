@@ -1,6 +1,8 @@
 package com.himusharier.auth.advice;
 
 import com.himusharier.auth.util.ApiResponse;
+import com.himusharier.auth.exception.RefreshTokenException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -29,6 +31,15 @@ public class ApplicationExceptionHandler {
         return ResponseEntity.badRequest().body(response);
     }
 
+    @ExceptionHandler(RefreshTokenException.class)
+    public ResponseEntity<ApiResponse<String>> handleRefreshTokenException(RefreshTokenException exception) {
+        ApiResponse<String> response = new ApiResponse<>(
+                false,
+                exception.getMessage()
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<String>> handleValidationErrors(MethodArgumentNotValidException exception){
         FieldError fieldError = exception.getBindingResult().getFieldError();
@@ -42,3 +53,4 @@ public class ApplicationExceptionHandler {
     }
 
 }
+
