@@ -31,10 +31,11 @@ public class JwtAuthService {
         }
 
         auth.setPassword(passwordEncoder.encode(auth.getPassword()));
+        auth.setActive(true);
 
-        if (auth.getUserRole() == null) {
+        /*if (auth.getUserRole() == null) {
             auth.setUserRole(UserRole.CUSTOMER);
-        }
+        }*/
 
         Auth saveAuth = authRepository.save(auth);
 

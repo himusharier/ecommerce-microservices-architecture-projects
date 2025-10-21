@@ -7,15 +7,16 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.UUID;
 
 @Getter
 public class JwtAuthDetails implements UserDetails {
-    private final Long id;
+    private final UUID id;
     private final String email;
     private final String role;
     private final Collection<? extends GrantedAuthority> authorities;
 
-    public JwtAuthDetails(Long id, String email, String role) {
+    public JwtAuthDetails(UUID id, String email, String role) {
         this.id = id;
         this.email = email;
         this.role = role;

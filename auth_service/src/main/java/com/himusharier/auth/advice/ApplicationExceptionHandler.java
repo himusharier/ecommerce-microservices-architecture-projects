@@ -20,6 +20,15 @@ public class ApplicationExceptionHandler {
         return ResponseEntity.badRequest().body(response);
     }
 
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<ApiResponse<String>> handleRuntimeExceptions(Exception exception) {
+        ApiResponse<String> response = new ApiResponse<>(
+                false,
+                exception.getMessage()
+        );
+        return ResponseEntity.badRequest().body(response);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<String>> handleValidationErrors(MethodArgumentNotValidException exception){
         FieldError fieldError = exception.getBindingResult().getFieldError();

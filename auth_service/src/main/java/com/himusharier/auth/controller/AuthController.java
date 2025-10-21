@@ -58,9 +58,9 @@ public class AuthController {
 
             Auth savedAuth = userService.createAuth(auth);
 
-            ApiResponse<String> response = new ApiResponse<>(
+            ApiResponse<Auth> response = new ApiResponse<>(
                     true, //true
-                    "Registration successful. Please login..."
+                    "Registration successful!"
             );
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -69,9 +69,6 @@ public class AuthController {
             throw new RegisterRequestException(e.getMessage());
 
         }
-        /*catch (Exception e) {
-            throw new RegisterRequestException(e.getMessage());
-        }*/
     }
 
     @PostMapping("/login")
@@ -90,15 +87,6 @@ public class AuthController {
             AuthUserDetails userDetails = (AuthUserDetails) authentication.getPrincipal();
             Auth auth = userDetails.auth();
 
-            // Create response with token and user info
-            /*Map<String, Object> responseData = new HashMap<>();
-            responseData.put("status", "success");
-            responseData.put("code", HttpStatus.OK.value());
-            responseData.put("message", "Login successful");
-
-            responseData.put("access_token", jwt);
-            responseData.put("tokenType", "Bearer");*/
-
             // Add user information
             Map<String, Object> userData = new HashMap<>();
             userData.put("id", auth.getUserId());
@@ -107,15 +95,12 @@ public class AuthController {
             userData.put("access_token", jwt);
             userData.put("tokenType", "Bearer");
 
-//            responseData.put("user", userData);
-
             ApiResponse<Object> response = new ApiResponse<>(
                     true, //true
-                    "Authentication successful. Please wait...",
+                    "Authentication successful!",
                     userData
             );
 
-//            return ResponseEntity.ok(responseData);
             return ResponseEntity.status(HttpStatus.OK).body(response);
 
         } catch (AuthenticationException e) {
@@ -141,15 +126,22 @@ public class AuthController {
             authResponse.setUserId(auth.getUserId());
             authResponse.setEmail(auth.getEmail());
             authResponse.setUserRole(auth.getUserRole());
+            authResponse.setCreatedAt(auth.getCreatedAt());
 
-            return ResponseEntity.ok(authResponse);
+            ApiResponse<AuthResponse> response = new ApiResponse<>(
+                    true, //true
+                    "Authorization successful!",
+                    authResponse
+            );
+
+            return ResponseEntity.status(HttpStatus.OK).body(response);
         }
 
-        Map<String, Object> authResponse = new HashMap<>();
-        authResponse.put("status", "error");
-        authResponse.put("code", HttpStatus.UNAUTHORIZED.value());
-        authResponse.put("message", "Invalid or expired token.");
+        ApiResponse<String> response = new ApiResponse<>(
+                false, //true
+                "Authorization failed."
+        );
 
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authResponse);
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
     }
 }
