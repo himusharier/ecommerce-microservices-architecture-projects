@@ -1,10 +1,10 @@
-package com.himusharier.cart;
+package com.himusharier.order;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class CartApplicationTests {
+class OrderApplicationTests {
 
 	@Test
 	void contextLoads() {

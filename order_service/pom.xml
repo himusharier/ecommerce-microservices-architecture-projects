@@ -5,14 +5,14 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.5.4</version>
+		<version>3.5.6</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.himusharier</groupId>
-	<artifactId>cart</artifactId>
+	<artifactId>order</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>cart</name>
-	<description>Cart project for Spring Boot Microservices</description>
+	<name>order</name>
+	<description>Order project for Spring Boot</description>
 	<url/>
 	<licenses>
 		<license/>
