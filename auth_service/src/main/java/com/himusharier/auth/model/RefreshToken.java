@@ -31,6 +31,16 @@ public class RefreshToken {
     @Column(nullable = false)
     private Instant createdAt;
 
+    // Device information for multi-device support
+    @Column(length = 500)
+    private String deviceInfo;
+
+    @Column(length = 100)
+    private String ipAddress;
+
+    @Column(length = 1000)
+    private String userAgent;
+
     @PrePersist
     protected void onCreate() {
         createdAt = Instant.now();

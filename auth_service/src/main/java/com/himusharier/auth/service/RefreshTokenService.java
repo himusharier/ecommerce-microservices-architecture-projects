@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 @Service
@@ -15,21 +16,30 @@ public class RefreshTokenService {
     private long refreshTokenDurationMs;
     @Autowired
     private RefreshTokenRepository refreshTokenRepository;
+
     @Transactional
-    public RefreshToken createRefreshToken(UUID userId) {
-        // Delete existing refresh token for the user (one token per user)
-        Optional<RefreshToken> existingToken = refreshTokenRepository.findByUserId(userId);
-        existingToken.ifPresent(refreshTokenRepository::delete);
+    public RefreshToken createRefreshToken(UUID userId, String deviceInfo, String ipAddress, String userAgent) {
+        // For multi-device support: DO NOT delete existing tokens
+        // Each device gets its own refresh token
         RefreshToken refreshToken = RefreshToken.builder()
                 .userId(userId)
                 .token(UUID.randomUUID().toString())
                 .expiryDate(Instant.now().plusMillis(refreshTokenDurationMs))
+                .deviceInfo(deviceInfo)
+                .ipAddress(ipAddress)
+                .userAgent(userAgent)
                 .build();
         return refreshTokenRepository.save(refreshToken);
     }
+
     public Optional<RefreshToken> findByToken(String token) {
         return refreshTokenRepository.findByToken(token);
     }
+
+    public List<RefreshToken> findAllByUserId(UUID userId) {
+        return refreshTokenRepository.findAllByUserId(userId);
+    }
+
     @Transactional
     public RefreshToken verifyExpiration(RefreshToken token) {
         if (token.isExpired()) {
@@ -38,14 +48,19 @@ public class RefreshTokenService {
         }
         return token;
     }
+
     @Transactional
     public void deleteByUserId(UUID userId) {
-        Optional<RefreshToken> refreshToken = refreshTokenRepository.findByUserId(userId);
-        refreshToken.ifPresent(refreshTokenRepository::delete);
+        refreshTokenRepository.deleteAllByUserId(userId);
     }
+
     @Transactional
     public void deleteByToken(String token) {
-        Optional<RefreshToken> refreshToken = refreshTokenRepository.findByToken(token);
-        refreshToken.ifPresent(refreshTokenRepository::delete);
+        refreshTokenRepository.deleteByToken(token);
+    }
+
+    @Transactional
+    public void deleteAllByUserId(UUID userId) {
+        refreshTokenRepository.deleteAllByUserId(userId);
     }
 }

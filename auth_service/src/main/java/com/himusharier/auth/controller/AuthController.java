@@ -2,19 +2,21 @@ package com.himusharier.auth.controller;
 
 import com.himusharier.auth.config.JwtTokenProvider;
 import com.himusharier.auth.dto.request.LoginRequest;
+import com.himusharier.auth.dto.request.LogoutRequest;
 import com.himusharier.auth.dto.request.RefreshTokenRequest;
 import com.himusharier.auth.dto.request.RegisterRequest;
 import com.himusharier.auth.dto.response.AuthResponse;
+import com.himusharier.auth.dto.response.DeviceResponse;
 import com.himusharier.auth.dto.response.TokenRefreshResponse;
 import com.himusharier.auth.exception.LoginRequestException;
+import com.himusharier.auth.exception.RefreshTokenException;
 import com.himusharier.auth.exception.RegisterRequestException;
 import com.himusharier.auth.model.Auth;
 import com.himusharier.auth.model.AuthUserDetails;
-import com.himusharier.auth.service.JwtAuthService;
-import com.himusharier.auth.service.TokenBlacklistService;
-import com.himusharier.auth.service.RefreshTokenService;
 import com.himusharier.auth.model.RefreshToken;
-import com.himusharier.auth.exception.RefreshTokenException;
+import com.himusharier.auth.service.JwtAuthService;
+import com.himusharier.auth.service.RefreshTokenService;
+import com.himusharier.auth.service.TokenBlacklistService;
 import com.himusharier.auth.util.ApiResponse;
 import com.himusharier.auth.util.JwtExtractor;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,8 +34,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -98,6 +102,11 @@ public class AuthController {
             AuthUserDetails userDetails = (AuthUserDetails) authentication.getPrincipal();
             Auth auth = userDetails.auth();
 
+            // Extract device information
+            String deviceInfo = com.himusharier.auth.util.DeviceExtractor.getDeviceInfo(servletRequest);
+            String ipAddress = com.himusharier.auth.util.DeviceExtractor.getClientIpAddress(servletRequest);
+            String userAgent = com.himusharier.auth.util.DeviceExtractor.getUserAgent(servletRequest);
+
             // Add user information
             Map<String, Object> userData = new HashMap<>();
             userData.put("id", auth.getUserId());
@@ -106,9 +115,11 @@ public class AuthController {
             userData.put("access_token", jwt);
             userData.put("tokenType", "Bearer");
 
-            // Create refresh token
-            RefreshToken refreshToken = refreshTokenService.createRefreshToken(auth.getUserId());
+            // Create refresh token with device info (supports multi-device login)
+            RefreshToken refreshToken = refreshTokenService.createRefreshToken(
+                    auth.getUserId(), deviceInfo, ipAddress, userAgent);
             userData.put("refresh_token", refreshToken.getToken());
+            userData.put("device_info", deviceInfo);
 
             ApiResponse<Object> response = new ApiResponse<>(
                     true, //true
@@ -170,7 +181,8 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<?> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
+    public ResponseEntity<?> refreshToken(HttpServletRequest servletRequest,
+                                          @Valid @RequestBody RefreshTokenRequest request) {
         String requestRefreshToken = request.refreshToken();
         try {
             RefreshToken refreshToken = refreshTokenService.findByToken(requestRefreshToken)
@@ -182,8 +194,18 @@ public class AuthController {
                     .orElseThrow(() -> new RefreshTokenException("User not found for this refresh token."));
             // Create new access token
             String newAccessToken = jwtTokenProvider.createTokenFromAuth(auth);
-            // Create new refresh token
-            RefreshToken newRefreshToken = refreshTokenService.createRefreshToken(auth.getUserId());
+
+            // Extract device information for new refresh token
+            String deviceInfo = com.himusharier.auth.util.DeviceExtractor.getDeviceInfo(servletRequest);
+            String ipAddress = com.himusharier.auth.util.DeviceExtractor.getClientIpAddress(servletRequest);
+            String userAgent = com.himusharier.auth.util.DeviceExtractor.getUserAgent(servletRequest);
+
+            // Delete the old refresh token
+            refreshTokenService.deleteByToken(requestRefreshToken);
+
+            // Create new refresh token with device info (for the same device)
+            RefreshToken newRefreshToken = refreshTokenService.createRefreshToken(
+                    auth.getUserId(), deviceInfo, ipAddress, userAgent);
             TokenRefreshResponse tokenRefreshResponse = new TokenRefreshResponse(
                     newAccessToken,
                     newRefreshToken.getToken()
@@ -204,7 +226,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(HttpServletRequest request) {
+    public ResponseEntity<?> logout(HttpServletRequest request, @RequestBody(required = false) LogoutRequest logoutRequest) {
         JwtExtractor jwtExtractor = new JwtExtractor();
         String jwt = jwtExtractor.getJwtFromRequest(request);
 
@@ -217,13 +239,21 @@ public class AuthController {
                 AuthUserDetails customUserDetails = (AuthUserDetails) userDetails;
                 UUID userId = customUserDetails.getId();
 
-                // Add token to database blacklist
+                // Add access token to database blacklist
                 tokenBlacklistService.blacklistToken(jwt, userId);
 
-                // Delete refresh token for the user
-                refreshTokenService.deleteByUserId(userId);
+                // Delete specific refresh token if provided (device-specific logout)
+                // Otherwise, delete all refresh tokens (logout from all devices)
+                if (logoutRequest != null && logoutRequest.refreshToken() != null
+                        && !logoutRequest.refreshToken().isEmpty()) {
+                    // Device-specific logout: delete only the provided refresh token
+                    refreshTokenService.deleteByToken(logoutRequest.refreshToken());
+                } else {
+                    // Logout from all devices: delete all refresh tokens for this user
+                    refreshTokenService.deleteAllByUserId(userId);
+                }
             }
-            
+
             // Clear security context
             SecurityContextHolder.clearContext();
 
@@ -241,5 +271,169 @@ public class AuthController {
         );
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    // Get all active devices (sessions) for the current user
+    @GetMapping("/devices")
+    public ResponseEntity<?> getActiveDevices(HttpServletRequest request) {
+        JwtExtractor jwtExtractor = new JwtExtractor();
+        String jwt = jwtExtractor.getJwtFromRequest(request);
+
+        if (jwt != null && jwtTokenProvider.validateToken(jwt)) {
+            if (tokenBlacklistService.isTokenBlacklisted(jwt)) {
+                ApiResponse<String> response = new ApiResponse<>(
+                        false,
+                        "Token has been invalidated. Please login again."
+                );
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+            }
+
+            String username = jwtTokenProvider.getUsernameFromToken(jwt);
+            UserDetails userDetails = userService.loadUserByUsername(username);
+            AuthUserDetails customUserDetails = (AuthUserDetails) userDetails;
+            UUID userId = customUserDetails.getId();
+
+            // Get all refresh tokens (active sessions) for this user
+            List<RefreshToken> refreshTokens = refreshTokenService.findAllByUserId(userId);
+
+            // Get current refresh token from request if available
+            String currentRefreshToken = request.getHeader("X-Refresh-Token");
+
+            List<DeviceResponse> devices = refreshTokens.stream()
+                    .map(rt -> {
+                        DeviceResponse device = new DeviceResponse();
+                        device.setId(rt.getId());
+                        device.setDeviceInfo(rt.getDeviceInfo());
+                        device.setIpAddress(rt.getIpAddress());
+                        device.setLastUsed(rt.getCreatedAt());
+                        device.setCurrent(rt.getToken().equals(currentRefreshToken));
+                        return device;
+                    })
+                    .collect(Collectors.toList());
+
+            ApiResponse<List<DeviceResponse>> response = new ApiResponse<>(
+                    true,
+                    "Active devices retrieved successfully!",
+                    devices
+            );
+
+            return ResponseEntity.status(HttpStatus.OK).body(response);
+        }
+
+        ApiResponse<String> response = new ApiResponse<>(
+                false,
+                "Invalid token."
+        );
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    }
+
+    // Logout from a specific device by device ID (refresh token ID)
+    @DeleteMapping("/devices/{deviceId}")
+    public ResponseEntity<?> logoutDevice(HttpServletRequest request, @PathVariable UUID deviceId) {
+        JwtExtractor jwtExtractor = new JwtExtractor();
+        String jwt = jwtExtractor.getJwtFromRequest(request);
+
+        if (jwt != null && jwtTokenProvider.validateToken(jwt)) {
+            if (tokenBlacklistService.isTokenBlacklisted(jwt)) {
+                ApiResponse<String> response = new ApiResponse<>(
+                        false,
+                        "Token has been invalidated. Please login again."
+                );
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+            }
+
+            String username = jwtTokenProvider.getUsernameFromToken(jwt);
+            UserDetails userDetails = userService.loadUserByUsername(username);
+            AuthUserDetails customUserDetails = (AuthUserDetails) userDetails;
+            UUID userId = customUserDetails.getId();
+
+            // Get all refresh tokens for this user
+            List<RefreshToken> refreshTokens = refreshTokenService.findAllByUserId(userId);
+
+            // Find the device to remove
+            RefreshToken deviceToRemove = refreshTokens.stream()
+                    .filter(rt -> rt.getId().equals(deviceId))
+                    .findFirst()
+                    .orElse(null);
+
+            if (deviceToRemove != null && deviceToRemove.getUserId().equals(userId)) {
+                // Delete the refresh token for that device
+                refreshTokenService.deleteByToken(deviceToRemove.getToken());
+
+                ApiResponse<String> response = new ApiResponse<>(
+                        true,
+                        "Device logged out successfully!"
+                );
+                return ResponseEntity.status(HttpStatus.OK).body(response);
+            }
+
+            ApiResponse<String> response = new ApiResponse<>(
+                    false,
+                    "Device not found or unauthorized."
+            );
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        ApiResponse<String> response = new ApiResponse<>(
+                false,
+                "Invalid token."
+        );
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    }
+
+    // Logout from all devices except the current one
+    @PostMapping("/logout-all-except-current")
+    public ResponseEntity<?> logoutAllExceptCurrent(HttpServletRequest request, @RequestBody LogoutRequest logoutRequest) {
+        JwtExtractor jwtExtractor = new JwtExtractor();
+        String jwt = jwtExtractor.getJwtFromRequest(request);
+
+        if (jwt != null && jwtTokenProvider.validateToken(jwt)) {
+            if (tokenBlacklistService.isTokenBlacklisted(jwt)) {
+                ApiResponse<String> response = new ApiResponse<>(
+                        false,
+                        "Token has been invalidated. Please login again."
+                );
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+            }
+
+            String username = jwtTokenProvider.getUsernameFromToken(jwt);
+            UserDetails userDetails = userService.loadUserByUsername(username);
+            AuthUserDetails customUserDetails = (AuthUserDetails) userDetails;
+            UUID userId = customUserDetails.getId();
+
+            if (logoutRequest != null && logoutRequest.refreshToken() != null
+                    && !logoutRequest.refreshToken().isEmpty()) {
+                String currentRefreshToken = logoutRequest.refreshToken();
+
+                // Get all refresh tokens for this user
+                List<RefreshToken> refreshTokens = refreshTokenService.findAllByUserId(userId);
+
+                // Delete all except the current one
+                refreshTokens.stream()
+                        .filter(rt -> !rt.getToken().equals(currentRefreshToken))
+                        .forEach(rt -> refreshTokenService.deleteByToken(rt.getToken()));
+
+                ApiResponse<String> response = new ApiResponse<>(
+                        true,
+                        "Logged out from all other devices successfully!"
+                );
+                return ResponseEntity.status(HttpStatus.OK).body(response);
+            }
+
+            ApiResponse<String> response = new ApiResponse<>(
+                    false,
+                    "Refresh token is required."
+            );
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        ApiResponse<String> response = new ApiResponse<>(
+                false,
+                "Invalid token."
+        );
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
     }
 }
